@@ -48,7 +48,7 @@ async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
     reader.read_line(&mut username).await?;
     let username = username.trim();
 
-    //let _username_msg = format!("Your username is {}\n", username.trim());
+    //let username_msg = format!("Your username is {}\n", username.trim());
     //writer.write_all(username_msg.as_bytes()).await?;
 
     println!("{} joined the chat", username.to_string());
@@ -56,7 +56,6 @@ async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
     let channel = "Global".to_string();
 
     {
-        //let users: User;
         let mut users = users.lock().await;
         users.insert(
             username.to_string(),
@@ -70,7 +69,6 @@ async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
     loop {
         let mut msg = String::new();
         reader.read_line(&mut msg).await?;
-        //writer.write_all(msg.as_bytes()).await?;
-        broadcast_messages(msg).await?;
+        broadcast_messages(username, &msg, &users).await?;
     }
 }
