@@ -1,19 +1,17 @@
-use tokio::sync::Mutex;
-use std::sync::Arc;
-use tokio::net::tcp::OwnedWriteHalf;
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct User {
     pub username: String,
     pub channel: String,
-    pub stream: Arc<Mutex<OwnedWriteHalf>>,
+    pub tx: mpsc::UnboundedSender<String>,
 }
 
-impl User {
-    pub fn new(username: String, channel: String, stream: OwnedWriteHalf) -> Self {
-        Self { username,
-               channel,
-               stream: Arc::new(Mutex::new(stream)),
-        }
-    }
-}
+// impl User {
+//     pub fn new(username: String, channel: String, tx: mpsc::unbounded_channel::<String>) -> Self {
+//         Self { username,
+//                channel,
+//                tx: mpsc::unbounded_channel::<String>(),
+//         }
+//     }
+// }

@@ -1,11 +1,12 @@
+use tokio::io::{self, AsyncWriteExt, AsyncBufReadExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, mpsc};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
 
-use crate::messages::broadcast_messages;
 use crate::users::User;
+use crate::messages::broadcast_messages;
+//use crate::executor::executor;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
@@ -16,10 +17,7 @@ pub async fn start_server(addr: &str) -> io::Result<()> {
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
-                //let (socket, _) = listener.accept().await?;
-                //println!("New client: {:?}", addr);
                 let users = users.clone();
-                //let (stream, _) = listener.accept().await.unwrap();
                 let stream = stream;
                 tokio::spawn(async move {
                     if let Err(e) = handle_client(stream, users).await {
@@ -35,40 +33,70 @@ pub async fn start_server(addr: &str) -> io::Result<()> {
         }
     }
 }
-//}
 
 async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
     let (reader, stream) = stream.into_split();
     let mut reader = BufReader::new(reader);
 
-    //writer.write_all(b"Hello, World!\n").await?;
-    //writer.write_all(b"Enter your username: ").await?;
+    let (tx, mut rx) = mpsc::unbounded_channel::<String>();
 
+    tokio::spawn(spawn_writer(stream, rx));
+
+    let _ = tx.send("Enter username: ".to_string());
     let mut username = String::new();
     reader.read_line(&mut username).await?;
     let username = username.trim();
+    let username_msg = format!("Your username is {}\n", username.trim());
+    let _ = tx.send(username_msg.to_string());
 
-    //let username_msg = format!("Your username is {}\n", username.trim());
-    //writer.write_all(username_msg.as_bytes()).await?;
-
-    println!("{} joined the chat", username.to_string());
+    println!("{} connected", username.to_string());
 
     let channel = "Global".to_string();
-
+    
     {
         let mut users = users.lock().await;
         users.insert(
             username.to_string(),
-            User::new(username.to_string(), channel.clone(), stream),
+            User {
+                username: username.to_string(),
+                channel: "Global".to_string(),
+                tx: tx.clone(),
+            },
         );
-        //for (_, User) in users.iter() {
-            //println!("User: {:#?}", User);
-        //}
     }
 
+    let mut msg = String::new();
+    
     loop {
-        let mut msg = String::new();
-        reader.read_line(&mut msg).await?;
+        msg.clear();
+        let message = reader.read_line(&mut msg).await?;
+
+        if message == 0 {
+            break;
+        }
+        
+        //executor(username.to_string(), msg.clone(), users.clone()).await?;
         broadcast_messages(username, &msg, &users).await?;
+        
+    }
+
+    {
+        let mut users = users.lock().await;
+        users.remove(username);
+    }
+
+    println!("{username} disconnected");
+
+    Ok(())
+} 
+
+async fn spawn_writer(
+    mut writer: tokio::net::tcp::OwnedWriteHalf,
+    mut rx: mpsc::UnboundedReceiver<String>,
+) {
+    while let Some(msg) = rx.recv().await {
+        if writer.write_all(msg.as_bytes()).await.is_err() {
+            break; // client disconnected
+        }
     }
 }
