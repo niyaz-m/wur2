@@ -17,7 +17,7 @@ pub async fn broadcast_messages(
     
     for (name, user) in users.iter() {
         if name != &sender_name {
-            let _ = user.tx.send(format!("[{0}] {sender_name}: {msg}", user.channel));
+            let _ = user.tx.send(format!("[{0}] {sender_name}: {msg}\n", user.channel));
         }
     }
     

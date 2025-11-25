@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::users::User;
-use crate::messages::broadcast_messages;
-//use crate::executor::executor;
+//use crate::messages::broadcast_messages;
+use crate::executor::executor;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
@@ -70,27 +70,25 @@ async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
     loop {
         msg.clear();
         let message = reader.read_line(&mut msg).await?;
-
         if message == 0 {
             break;
         }
         
-        //executor(username.to_string(), msg.clone(), users.clone()).await?;
-        broadcast_messages(username, &msg, &users).await?;
-        
+        let msg = msg.trim();
+        executor(username.to_string(), msg.to_string(), users.clone()).await?;
+        //broadcast_messages(username, &msg, &users).await?;
     }
 
     {
         let mut users = users.lock().await;
         users.remove(username);
     }
-
     println!("{username} disconnected");
 
     Ok(())
 } 
 
-async fn spawn_writer(
+pub async fn spawn_writer(
     mut writer: tokio::net::tcp::OwnedWriteHalf,
     mut rx: mpsc::UnboundedReceiver<String>,
 ) {
