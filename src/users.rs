@@ -54,7 +54,7 @@ impl User {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Client disconnected"))
     }
 
-    pub async fn switch_channel(&mut self, new_channel: String) -> io::Result<()> {
+    pub async fn switch_channel(&mut self, new_channel: String) -> io::Result<()> { 
         let old_channel = std::mem::replace(&mut self.channel, new_channel.clone());
         self.send(format!("Switched from {} to {}", old_channel, new_channel))
             .await

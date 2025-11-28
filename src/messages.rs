@@ -4,6 +4,7 @@ use tokio::io;
 use tokio::sync::Mutex;
 
 use crate::users::User;
+use crate::server::ConnectionStatus;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
@@ -13,6 +14,7 @@ pub enum Command {
     JoinChannel(String),
     ListUsers,
     ListChannels,
+    CloseConnection,
     Broadcast(String),
     Unknown,
 }
@@ -29,6 +31,8 @@ impl Command {
             ["/join", channel] => Command::JoinChannel(channel.to_string()),
             ["/list"] => Command::ListUsers,
             ["/channels"] => Command::ListChannels,
+            ["/close"] => Command::CloseConnection,
+            ["/help"] => Command::Unknown,
             [""] => Command::Unknown,
             _ if input.starts_with('/') => Command::Unknown,
             _ => Command::Broadcast(input),
@@ -39,7 +43,7 @@ impl Command {
 pub struct CommandExecutor;
 
 impl CommandExecutor {
-    pub async fn execute(username: String, input: String, users: Users) -> io::Result<()> {
+    pub async fn execute(username: String, input: String, users: Users) -> io::Result<ConnectionStatus> {
         let command = Command::parse(input);
 
         match command {
@@ -50,11 +54,12 @@ impl CommandExecutor {
             Command::ListUsers => Self::list_users(username, users).await,
             Command::ListChannels => Self::list_channels(username, users).await,
             Command::Broadcast(message) => Self::broadcast_messages(username, message, users).await,
+            Command::CloseConnection => Self::close_connection(username, users).await,
             Command::Unknown => Self::send_unknown_command(username, users).await,
         }
     }
 
-    async fn broadcast_messages(sender_name: String, msg: String, users: Users) -> io::Result<()> {
+    async fn broadcast_messages(sender_name: String, msg: String, users: Users) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
 
         let sender_channel = users_guard
@@ -73,25 +78,25 @@ impl CommandExecutor {
                 let _ = user.tx.send(final_msg.to_string());
             }
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
 
-    async fn join_channel(username: String, channel: String, users: Users) -> io::Result<()> {
+    async fn join_channel(username: String, channel: String, users: Users) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
-
         if let Some(user) = users_guard.get_mut(&username) {
             user.switch_channel(channel).await?;
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
-    async fn list_users(username: String, users: Users) -> io::Result<()> {
+    
+    async fn list_users(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let mut users = users.lock().await;
         let list = users.keys().cloned().collect::<Vec<_>>().join(", ");
         let response = format!("Connected users: {}\n", list);
         if let Some(user) = users.get_mut(&username) {
             let _ = user.tx.send(response);
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
 
     async fn send_private_message(
@@ -99,7 +104,7 @@ impl CommandExecutor {
         target_name: String,
         msg: String,
         users: Users,
-    ) -> io::Result<()> {
+    ) -> io::Result<ConnectionStatus> {
         let mut users = users.lock().await;
 
         if let Some(_target_user) = users.values().find(|u| u.username == target_name) {
@@ -113,10 +118,10 @@ impl CommandExecutor {
                 let _ = user.tx.send(error);
             }
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
 
-    async fn list_channels(username: String, users: Users) -> io::Result<()> {
+    async fn list_channels(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
         let channels: HashSet<String> = users_guard
             .values()
@@ -129,10 +134,18 @@ impl CommandExecutor {
             user.send(format!("Active channels: {}", channel_list.join(", ")))
                 .await?;
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
 
-    async fn send_unknown_command(username: String, users: Users) -> io::Result<()> {
+    async fn close_connection(username: String, users: Users) -> io::Result<ConnectionStatus> {
+        let mut users_guard = users.lock().await; 
+        if let Some(user) = users_guard.get_mut(&username) {
+            let _ = user.tx.send("GOODBYE! Connection closed...\n".to_string());
+        }
+        return Ok(ConnectionStatus::Close);
+    }
+
+    async fn send_unknown_command(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
 
         if let Some(user) = users_guard.get_mut(&username) {
@@ -142,9 +155,11 @@ impl CommandExecutor {
             /join <channel> - Switch channels
             /list - List online users
             /channels - List active channels
+            /close - Close the connection
+            /help = To show this message
             "#;
             user.send(help.trim().to_string()).await?;
         }
-        Ok(())
+        Ok(ConnectionStatus::Continue)
     }
 }

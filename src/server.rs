@@ -7,6 +7,11 @@ use tokio::sync::Mutex;
 
 use crate::users::User;
 
+pub enum ConnectionStatus {
+    Continue,
+    Close,
+}
+
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
 pub struct Server;
@@ -53,7 +58,16 @@ impl Server {
 
         while reader.read_line(&mut buffer).await? > 0 {
             let command = buffer.trim().to_string();
-            CommandExecutor::execute(user.username.clone(), command, users.clone()).await?;
+            match CommandExecutor::execute(
+                user.username.clone(),
+                command,
+                users.clone()
+            ).await {
+                Ok(ConnectionStatus::Continue) => {},
+                Ok(ConnectionStatus::Close) => break, 
+                Err(e) => return Err(e),
+            }
+            
             buffer.clear();
         }
 
