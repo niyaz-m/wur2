@@ -1,10 +1,10 @@
-use crate::messages::CommandExecutor;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
+use crate::messages::CommandExecutor;
 use crate::users::User;
 
 pub enum ConnectionStatus {
@@ -21,7 +21,6 @@ impl Server {
         let listener = TcpListener::bind(addr).await?;
         let users: Users = Arc::new(Mutex::new(HashMap::new()));
 
-        println!("Server starting on {}", addr);
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {

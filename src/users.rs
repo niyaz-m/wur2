@@ -25,8 +25,6 @@ impl User {
         let username = format!("user_{}", rand::random::<u16>());
         let channel = "Global".to_string();
 
-        //println!("INFO: {} connected", username.to_string());
-
         let user = User {
             username,
             channel,
