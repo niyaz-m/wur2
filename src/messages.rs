@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tokio::io;
 use tokio::sync::Mutex;
 
-use crate::users::User;
 use crate::server::ConnectionStatus;
+use crate::users::User;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
@@ -17,6 +17,7 @@ pub enum Command {
     CloseConnection,
     KickUser(String),
     Broadcast(String),
+    ProfileView,
     Unknown,
 }
 
@@ -33,10 +34,11 @@ impl Command {
             ["/join", channel] => Command::JoinChannel(channel.to_string()),
             ["/list"] => Command::ListUsers,
             ["/channels"] => Command::ListChannels,
+            ["/profile"] => Command::ProfileView,
             ["/close"] => Command::CloseConnection,
             ["/help"] => Command::Unknown,
             [""] => Command::Unknown,
-            
+
             _ if input.starts_with('/') => Command::Unknown,
             _ => Command::Broadcast(input),
         }
@@ -46,18 +48,23 @@ impl Command {
 pub struct CommandExecutor;
 
 impl CommandExecutor {
-    pub async fn execute(username: String, input: String, users: Users) -> io::Result<ConnectionStatus> {
+    pub async fn execute(
+        username: String,
+        input: String,
+        users: Users,
+    ) -> io::Result<ConnectionStatus> {
         let command = Command::parse(input);
 
         match command {
             Command::PrivateMessage { target, message } => {
                 Self::send_private_message(username, target, message, users).await
             }
-            Command::KickUser(target) => Self::kick_user(username, target, users).await, 
+            Command::KickUser(target) => Self::kick_user(username, target, users).await,
             Command::JoinChannel(channel) => Self::join_channel(username, channel, users).await,
             Command::ListUsers => Self::list_users(username, users).await,
             Command::ListChannels => Self::list_channels(username, users).await,
             Command::Broadcast(message) => Self::broadcast_messages(username, message, users).await,
+            Command::ProfileView => Self::profile_view(username, users).await,
             Command::CloseConnection => Self::close_connection(username, users).await,
             Command::Unknown => Self::send_unknown_command(username, users).await,
         }
@@ -66,7 +73,7 @@ impl CommandExecutor {
     async fn broadcast_messages(
         sender_name: String,
         msg: String,
-        users: Users
+        users: Users,
     ) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
 
@@ -76,7 +83,7 @@ impl CommandExecutor {
             .unwrap_or("general");
 
         println!(
-            "DEBUG: {} broadcasting to channel: {}",
+            "DEBUG: {} broadcasing to channel: {}",
             sender_name, sender_channel
         );
 
@@ -85,19 +92,31 @@ impl CommandExecutor {
                 let final_msg = format!("[{}] {sender_name}: {msg}", sender_channel);
                 user.send(final_msg).await?;
             }
-            
         }
         Ok(ConnectionStatus::Continue)
     }
-    
-    async fn join_channel(username: String, channel: String, users: Users) -> io::Result<ConnectionStatus> {
+
+    async fn join_channel(
+        username: String,
+        channel: String,
+        users: Users,
+    ) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
         if let Some(user) = users_guard.get_mut(&username) {
             user.switch_channel(channel).await?;
         }
         Ok(ConnectionStatus::Continue)
     }
-    
+
+    async fn profile_view(username: String, users: Users) -> io::Result<ConnectionStatus> {
+        let mut users_guard = users.lock().await;
+        if let Some(user) = users_guard.get_mut(&username) {
+            let profile = user.get_profile();
+            Self::send_message(username, users_guard, profile).await?;
+        }
+        Ok(ConnectionStatus::Continue)
+    }
+
     async fn list_users(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
         let list = users_guard.keys().cloned().collect::<Vec<_>>().join(", ");
@@ -106,8 +125,19 @@ impl CommandExecutor {
         Ok(ConnectionStatus::Continue)
     }
 
-    async fn kick_user(kicker: String, target: String, users: Users) -> io::Result<ConnectionStatus> {
+    async fn kick_user(
+        kicker: String,
+        target: String,
+        users: Users,
+    ) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
+
+        if let Some(user) = users_guard.values().find(|u| u.role == "user") {
+            let response = format!("You don't have the privileges to kick users...");
+            user.send(response.to_string()).await?;
+            return Ok(ConnectionStatus::Continue);
+        }
+
         if kicker == target {
             let response = format!("You cannot kick yourself...");
             Self::send_message(kicker, users_guard, response.to_string()).await?;
@@ -119,7 +149,7 @@ impl CommandExecutor {
             Self::send_message(kicker, users_guard, response.to_string()).await?;
             return Ok(ConnectionStatus::Continue);
         }
-        
+
         if let Some(user) = users_guard.remove(&target) {
             let response = format!("You have been kicked out of the server...");
             user.send(response).await?;
@@ -134,9 +164,7 @@ impl CommandExecutor {
         users: Users,
     ) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
-
-        if let Some(_target_user) = users_guard.values()
-            .find(|u| u.username == target_name) {
+        if let Some(_target_user) = users_guard.values().find(|u| u.username == target_name) {
             let response = format!("[DM] {}: {}", username, msg);
             Self::send_message(target_name, users_guard, response.to_string()).await?;
         } else {
@@ -154,7 +182,6 @@ impl CommandExecutor {
             .collect();
 
         let channel_list: Vec<String> = channels.into_iter().collect();
-        
         let response = format!("Active channels: {}", channel_list.join(", "));
         Self::send_message(username, users_guard, response.to_string()).await?;
         Ok(ConnectionStatus::Continue)
@@ -162,7 +189,7 @@ impl CommandExecutor {
 
     async fn close_connection(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
-        let response = format!("GOODBYE! Fuck you, you little shit!");
+        let response = format!("GOODBYE!");
         Self::send_message(username, users_guard, response.to_string()).await?;
         return Ok(ConnectionStatus::Close);
     }
@@ -170,7 +197,7 @@ impl CommandExecutor {
     async fn send_message(
         target: String,
         mut users_guard: tokio::sync::MutexGuard<'_, HashMap<String, User>>,
-        message: String
+        message: String,
     ) -> io::Result<()> {
         if let Some(user) = users_guard.get_mut(&target) {
             user.send(message).await?;
@@ -188,6 +215,7 @@ impl CommandExecutor {
             /join <channel> - Switch channels
             /list - List online users
             /channels - List active channels
+            /profile - Show your profile
             /close - Close the connection
             /help = To show this message
             "#;
@@ -195,5 +223,4 @@ impl CommandExecutor {
         }
         Ok(ConnectionStatus::Continue)
     }
-    
 }

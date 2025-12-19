@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 pub struct User {
     pub username: String,
     pub channel: String,
+    pub role: String,
     pub tx: mpsc::UnboundedSender<String>,
 }
 
@@ -22,12 +23,14 @@ impl User {
         //let username_msg = format!("Your username is {}\n", username.trim());
         //let _ = tx.send(username_msg.to_string());
 
-        let username = format!("user_{}", rand::random::<u16>());
+        let username = format!("user_{}", rand::random::<u8>());
         let channel = "Global".to_string();
+        let role = "User".to_string();
 
         let user = User {
             username,
             channel,
+            role,
             tx,
         };
 
@@ -52,7 +55,7 @@ impl User {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Client disconnected"))
     }
 
-    pub async fn switch_channel(&mut self, new_channel: String) -> io::Result<()> { 
+    pub async fn switch_channel(&mut self, new_channel: String) -> io::Result<()> {
         let old_channel = std::mem::replace(&mut self.channel, new_channel.clone());
         self.send(format!("Switched from {} to {}", old_channel, new_channel))
             .await
@@ -60,5 +63,12 @@ impl User {
 
     pub fn get_channel(&self) -> &str {
         &self.channel
+    }
+
+    pub fn get_profile(&self) -> String {
+        format!(
+            "Username: {}\nChannel: {}\nRole: {}\n",
+            self.username, self.channel, self.role
+        )
     }
 }
