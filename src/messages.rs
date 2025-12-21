@@ -18,6 +18,7 @@ pub enum Command {
     KickUser(String),
     Broadcast(String),
     ProfileView,
+    ChangeRole,
     Unknown,
 }
 
@@ -35,6 +36,7 @@ impl Command {
             ["/list"] => Command::ListUsers,
             ["/channels"] => Command::ListChannels,
             ["/profile"] => Command::ProfileView,
+            ["/role"] => Command::ChangeRole,
             ["/close"] => Command::CloseConnection,
             ["/help"] => Command::Unknown,
             [""] => Command::Unknown,
@@ -65,6 +67,7 @@ impl CommandExecutor {
             Command::ListChannels => Self::list_channels(username, users).await,
             Command::Broadcast(message) => Self::broadcast_messages(username, message, users).await,
             Command::ProfileView => Self::profile_view(username, users).await,
+            Command::ChangeRole => Self::change_role(username, users).await,
             Command::CloseConnection => Self::close_connection(username, users).await,
             Command::Unknown => Self::send_unknown_command(username, users).await,
         }
@@ -83,7 +86,7 @@ impl CommandExecutor {
             .unwrap_or("general");
 
         println!(
-            "DEBUG: {} broadcasing to channel: {}",
+            "INFO: {} broadcasing to channel: {}",
             sender_name, sender_channel
         );
 
@@ -104,6 +107,16 @@ impl CommandExecutor {
         let mut users_guard = users.lock().await;
         if let Some(user) = users_guard.get_mut(&username) {
             user.switch_channel(channel).await?;
+        }
+        Ok(ConnectionStatus::Continue)
+    }
+
+    async fn change_role(username: String, users: Users) -> io::Result<ConnectionStatus> {
+        let mut users_guard = users.lock().await;
+        if let Some(user) = users_guard.get_mut(&username) {
+            user.change_role().await?;
+            let response = format!("You changed your role");
+            Self::send_message(username, users_guard, response).await?;
         }
         Ok(ConnectionStatus::Continue)
     }
@@ -132,7 +145,7 @@ impl CommandExecutor {
     ) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
 
-        if let Some(user) = users_guard.values().find(|u| u.role == "user") {
+        if let Some(user) = users_guard.values().find(|u| u.role == "User") {
             let response = format!("You don't have the privileges to kick users...");
             user.send(response.to_string()).await?;
             return Ok(ConnectionStatus::Continue);

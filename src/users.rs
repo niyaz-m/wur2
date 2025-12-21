@@ -57,8 +57,13 @@ impl User {
 
     pub async fn switch_channel(&mut self, new_channel: String) -> io::Result<()> {
         let old_channel = std::mem::replace(&mut self.channel, new_channel.clone());
-        self.send(format!("Switched from {} to {}", old_channel, new_channel))
-            .await
+        let response = format!("Switched from {} to {}", old_channel, new_channel);
+        self.send(response).await
+    }
+
+    pub async fn change_role(&mut self) -> io::Result<()> {
+        let _ = std::mem::replace(&mut self.role, "Mod".to_string());
+        Ok(())
     }
 
     pub fn get_channel(&self) -> &str {

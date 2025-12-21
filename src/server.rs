@@ -57,16 +57,11 @@ impl Server {
 
         while reader.read_line(&mut buffer).await? > 0 {
             let command = buffer.trim().to_string();
-            match CommandExecutor::execute(
-                user.username.clone(),
-                command,
-                users.clone()
-            ).await {
-                Ok(ConnectionStatus::Continue) => {},
-                Ok(ConnectionStatus::Close) => break, 
+            match CommandExecutor::execute(user.username.clone(), command, users.clone()).await {
+                Ok(ConnectionStatus::Continue) => {}
+                Ok(ConnectionStatus::Close) => break,
                 Err(e) => return Err(e),
             }
-            
             buffer.clear();
         }
 
