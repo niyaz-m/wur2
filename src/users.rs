@@ -1,9 +1,10 @@
-use tokio::io::{self, AsyncWriteExt};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::mpsc;
+use tokio::io::{self, AsyncWriteExt};
 
 #[derive(Debug, Clone)]
 pub struct User {
+    pub user_id: i64,
     pub username: String,
     pub channel: String,
     pub role: String,
@@ -11,33 +12,28 @@ pub struct User {
 }
 
 impl User {
-    pub async fn from_stream(stream: OwnedWriteHalf) -> io::Result<Self> {
+    pub async fn from_stream(stream: OwnedWriteHalf, username: String) -> io::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel::<String>();
 
         tokio::spawn(Self::writer_task(stream, rx));
 
-        //let _ = tx.send("Enter username: ".to_string());
-        //let mut username = String::new();
-        //reader.read_line(&mut username).await?;
-        //let username = username.trim();
-        //let username_msg = format!("Your username is {}\n", username.trim());
-        //let _ = tx.send(username_msg.to_string());
+        let _ = tx.send("=======================\n".to_string());
+        let _ = tx.send("||  Whats Up Rust 2  ||\n".to_string());
+        let _ = tx.send("=======================\n".to_string());
 
-        let username = format!("user_{}", rand::random::<u8>());
+        //let username = format!("user_{}", rand::random::<u8>());
+        let username = username.trim();
         let channel = "Global".to_string();
         let role = "User".to_string();
+        let user_id = 1;
 
         let user = User {
-            username,
+            user_id,
+            username: username.to_string(),
             channel,
             role,
             tx,
         };
-
-        user.send("=======================".to_string()).await?;
-        user.send("||  Whats Up Rust 2  ||".to_string()).await?;
-        user.send("=======================".to_string()).await?;
-
         Ok(user)
     }
 

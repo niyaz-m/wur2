@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, BufReader, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
@@ -41,11 +41,15 @@ impl Server {
     }
 
     async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
-        let (reader, writer) = stream.into_split();
+        let (reader, mut writer) = stream.into_split();
+
+        writer.write_all(b"Enter username: ").await?;
         let mut reader = BufReader::new(reader);
 
-        let user = User::from_stream(writer).await?;
+        let mut username = String::new();
+        reader.read_line(&mut username).await?;
 
+        let user = User::from_stream(writer, username).await?;
         {
             let mut users_guard = users.lock().await;
             users_guard.insert(user.username.clone(), user.clone());
