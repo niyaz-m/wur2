@@ -4,7 +4,6 @@ use tokio::io::{self, AsyncWriteExt};
 
 #[derive(Debug, Clone)]
 pub struct User {
-    pub user_id: i64,
     pub username: String,
     pub channel: String,
     pub role: String,
@@ -12,7 +11,7 @@ pub struct User {
 }
 
 impl User {
-    pub async fn from_stream(stream: OwnedWriteHalf, username: String) -> io::Result<Self> {
+    pub async fn from_stream(stream: OwnedWriteHalf, username: &String) -> io::Result<Self> {
         let (tx, rx) = mpsc::unbounded_channel::<String>();
 
         tokio::spawn(Self::writer_task(stream, rx));
@@ -25,10 +24,8 @@ impl User {
         let username = username.trim();
         let channel = "Global".to_string();
         let role = "User".to_string();
-        let user_id = 1;
 
         let user = User {
-            user_id,
             username: username.to_string(),
             channel,
             role,

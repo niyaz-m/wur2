@@ -201,13 +201,31 @@ impl CommandExecutor {
     }
 
     async fn close_connection(username: String, users: Users) -> io::Result<ConnectionStatus> {
-        let users_guard = users.lock().await;
+        //let users_guard = users.lock().await;
         let response = format!("GOODBYE!");
-        Self::send_message(username, users_guard, response.to_string()).await?;
+        //Self::send_message(username, users_guard, response.to_string()).await?;
+        Self::c_send_message(username, users, response.to_string()).await?;
         return Ok(ConnectionStatus::Close);
     }
 
-    async fn send_message(
+    pub async fn c_send_message(
+        target: String,
+        users: Arc<Mutex<HashMap<String, User>>>,
+        message: String,
+    ) -> io::Result<()> {
+        let sender = {
+            let users = users.lock().await;
+            users.get(&target).cloned()
+        }; // lock DROPPED
+
+        if let Some(sender) = sender {
+            sender.send(message).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn send_message(
         target: String,
         mut users_guard: tokio::sync::MutexGuard<'_, HashMap<String, User>>,
         message: String,

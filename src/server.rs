@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{self, AsyncBufReadExt, BufReader, AsyncWriteExt};
+use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 use crate::messages::CommandExecutor;
 use crate::users::User;
+use crate::auth::Auth;
 
 pub enum ConnectionStatus {
     Continue,
@@ -41,15 +42,13 @@ impl Server {
     }
 
     async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
-        let (reader, mut writer) = stream.into_split();
+        let (mut reader, mut writer) = stream.into_split();
 
-        writer.write_all(b"Enter username: ").await?;
+        let username = Auth::auth(&mut writer, &mut reader).await;
         let mut reader = BufReader::new(reader);
 
-        let mut username = String::new();
-        reader.read_line(&mut username).await?;
+        let user = User::from_stream(writer, &username).await?;
 
-        let user = User::from_stream(writer, username).await?;
         {
             let mut users_guard = users.lock().await;
             users_guard.insert(user.username.clone(), user.clone());
