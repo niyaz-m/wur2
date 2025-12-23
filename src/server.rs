@@ -4,9 +4,9 @@ use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
+use crate::auth::Auth;
 use crate::messages::CommandExecutor;
 use crate::users::User;
-use crate::auth::Auth;
 
 pub enum ConnectionStatus {
     Continue,
