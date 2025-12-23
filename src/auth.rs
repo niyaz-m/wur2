@@ -16,51 +16,78 @@ impl Auth {
         let answer = answer.trim();
         match answer {
             "y" => {
-                let username = Self::credentials(writer, &mut reader).await;
+                let username = Self::login(writer, &mut reader).await;
                 username.to_string()
             }
-            _ => "todo".to_string(),
+            "n" => {
+                let username = Self::register(writer, &mut reader).await;
+                username.to_string()
+            }
+            _ => "Do you an account? (y/n) ".to_string(),
         }
     }
 
-    async fn credentials(
+    async fn register(
         writer: &mut OwnedWriteHalf,
         reader: &mut BufReader<&mut OwnedReadHalf>,
     ) -> String {
-        let mut username = String::new();
         loop {
-            if let Err(e) = writer.write(b"Enter username: ").await {
-                eprintln!("ERROR: failed to prompt username: {e}");
+            let (username, password) = Self::credentials(writer, reader).await;
+            let username = username.trim();
+            let password = password.trim();
+            if !password.is_empty() && !username.is_empty() {
+                let password_hash = Self::hash_password(password.to_string().clone()).await;
+                println!("INFO: password hash: {password_hash}");
+                break username.to_string();
             }
-            if let Err(e) = reader.read_line(&mut username).await {
-                eprintln!("ERROR: failed to read username: {e}");
-            }
+        }
+    }
 
-            let mut password = String::new();
-            if let Err(e) = writer.write(b"Enter Password: ").await {
-                eprintln!("ERROR: failed to prompt password: {e}");
-            }
-            if let Err(e) = reader.read_line(&mut password).await {
-                eprintln!("ERROR: failed to read password: {e}");
-            }
+    async fn login(
+        writer: &mut OwnedWriteHalf,
+        reader: &mut BufReader<&mut OwnedReadHalf>,
+    ) -> String {
+        loop {
+            let (username, password) = Self::credentials(writer, reader).await;
+
             let password_hash = Self::hash_password(password.clone()).await;
             println!("INFO: password_hash: {password_hash}");
-
             let stored_password = "$argon2id$v=19$m=19456,t=2,p=1$QzkgJ0Si+7wjLgliPZ67eA$STP/3almbVBwzOTaYQNCtrazf6/4RENVU1Mt6mI+Zuo";
 
             let auth = Self::verify_password(password, stored_password).await;
             if auth == true {
                 let _ = writer.write_all(b"Your are authenticated\n").await;
-                break;
+                let username = username.trim();
+                println!("INFO: {username} logged in");
+                break username.to_string();
             } else {
                 println!("INFO: user entered wrong password");
                 let _ = writer.write_all(b"Your are not authenticated\n").await;
                 continue;
             }
         }
+    }
 
-        let username = username.trim();
-        username.to_string()
+    async fn credentials(
+        writer: &mut OwnedWriteHalf,
+        reader: &mut BufReader<&mut OwnedReadHalf>,
+    ) -> (String, String) {
+        let mut username = String::new();
+        if let Err(e) = writer.write(b"Enter username: ").await {
+            eprintln!("ERROR: failed to prompt username: {e}");
+        }
+        if let Err(e) = reader.read_line(&mut username).await {
+            eprintln!("ERROR: failed to read username: {e}");
+        }
+
+        let mut password = String::new();
+        if let Err(e) = writer.write(b"Enter Password: ").await {
+            eprintln!("ERROR: failed to prompt password: {e}");
+        }
+        if let Err(e) = reader.read_line(&mut password).await {
+            eprintln!("ERROR: failed to read password: {e}");
+        }
+        (username, password)
     }
 
     async fn hash_password(password: String) -> String {
