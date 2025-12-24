@@ -1,23 +1,66 @@
-use sqlx::postgres::PgPoolOptions;
-use dotenvy::dotenv;
-use std::env;
+use sqlx::PgPool;
+use crate::models::User;
 
-pub async fn db_connection() {
-    dotenv().ok();
+#[derive(Debug, Clone)]
+pub struct UserDb {
+    pool: PgPool,
+}
 
-    let database_url =
-        env::var("DATABASE_URL").expect("ERROR: DATABASE_URL not set");
+impl UserDb {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await
-        .expect("ERROR: failed to connect to Postgres");
+    pub async fn create_user(
+        &self,
+        username: String,
+        password_hash: &str,
+    ) -> Result<User, sqlx::Error> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            INSERT INTO users (username, password_hash)
+            VALUES ($1, $2)
+            RETURNING *
+            "#,
+        )
+        .bind(&username)
+        .bind(password_hash)
+        .fetch_one(&self.pool)
+        .await?;
 
-    let row: (i32,) = sqlx::query_as("SELECT 1")
-        .fetch_one(&pool)
-        .await
-        .expect("ERROR: failed to run test query");
+        println!("INFO: Created user: {}", user.username);
+        Ok(user)
+    }
 
-    println!("INFO: database connected successfully, result = {}", row.0);
+    pub async fn find_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<User>, sqlx::Error> {
+        let user = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, username, password_hash, created_at
+            FROM users
+            WHERE username = $1
+            "#,
+        )
+        .bind(username)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(user)
+    }
+
+    pub async fn get_all_users(&self) -> Result<Vec<User>, sqlx::Error> {
+        let users = sqlx::query_as::<_, User>(
+            r#"
+            SELECT id, username, password_hash, created_at
+            FROM users
+            ORDER BY created_at DESC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(users)
+    }
 }

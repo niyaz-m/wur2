@@ -1,3 +1,4 @@
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, BufReader};
@@ -5,6 +6,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
 use crate::auth::Auth;
+use crate::db::UserDb;
 use crate::messages::CommandExecutor;
 use crate::users::User;
 
@@ -18,7 +20,7 @@ pub type Users = Arc<Mutex<HashMap<String, User>>>;
 pub struct Server;
 
 impl Server {
-    pub async fn start_server(addr: &str) -> io::Result<()> {
+    pub async fn setup_server(addr: &str, pool: PgPool) -> io::Result<()> {
         let listener = TcpListener::bind(addr).await?;
         let users: Users = Arc::new(Mutex::new(HashMap::new()));
 
@@ -27,8 +29,9 @@ impl Server {
                 Ok((stream, _)) => {
                     let users = users.clone();
                     let stream = stream;
+                    let pool = pool.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = Self::handle_client(stream, users).await {
+                        if let Err(e) = Self::handle_client(stream, users, pool).await {
                             eprintln!("ERROR: failed to handle client: {}", e);
                         }
                     });
@@ -41,10 +44,13 @@ impl Server {
         }
     }
 
-    async fn handle_client(stream: TcpStream, users: Users) -> io::Result<()> {
+    async fn handle_client(stream: TcpStream, users: Users, pool: PgPool) -> io::Result<()> {
         let (mut reader, mut writer) = stream.into_split();
 
-        let username = Auth::auth(&mut writer, &mut reader).await;
+        let user_db = UserDb::new(pool);
+        let auth = Auth::new(user_db);
+
+        let username = auth.auth(&mut writer, &mut reader).await;
         let mut reader = BufReader::new(reader);
 
         let user = User::from_stream(writer, &username).await?;
@@ -79,6 +85,6 @@ impl Server {
     }
 }
 
-pub async fn start_server(addr: &str) -> io::Result<()> {
-    Server::start_server(addr).await
+pub async fn start_server(addr: &str, pool: PgPool) -> io::Result<()> {
+    Server::setup_server(addr, pool).await
 }
