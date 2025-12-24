@@ -53,6 +53,7 @@ impl Server {
         let username = auth.auth(&mut writer, &mut reader).await;
         let mut reader = BufReader::new(reader);
 
+        let username: String = username?;
         let user = User::from_stream(writer, &username).await?;
 
         {
