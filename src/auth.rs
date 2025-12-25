@@ -24,10 +24,10 @@ impl Auth {
         let answer = answer.trim();
         match answer {
             "y" => {
-                return self.register(writer, &mut reader).await;
+                return self.login(writer, &mut reader).await;
             }
             "n" => {
-                return self.login(writer, &mut reader).await;
+                return self.register(writer, &mut reader).await;
             }
             _ => Ok("Do you an account? (y/n) ".to_string()),
         }
@@ -66,20 +66,33 @@ impl Auth {
         reader: &mut BufReader<&mut OwnedReadHalf>,
     ) -> Result<String > {
         loop {
-            let Ok((username, password)) = Self::credentials(writer, reader).await else { todo!() };
-            let password_hash = Self::hash_password(password.clone()).await;
-            println!("INFO: password_hash: {password_hash}");
-            let stored_password = "$argon2id$v=19$m=19456,t=2,p=1$QzkgJ0Si+7wjLgliPZ67eA$STP/3almbVBwzOTaYQNCtrazf6/4RENVU1Mt6mI+Zuo";
-            let auth = Self::verify_password(password, stored_password).await;
-            if auth == true {
-                Self::write_line(writer, "Your are authenticated\n").await?;
-                let username = username.trim();
-                println!("INFO: {username} logged in");
-                break Ok(username.to_string());
-            } else {
-                println!("INFO: user entered wrong password");
-                Self::write_line(writer, "Your are not authenticated\n").await?;
-                continue;
+            let Ok((username, password)) = Self::credentials(writer, reader).await else {
+                panic!("ERROR: failed to get crdentials");
+            };
+            //let password_hash = Self::hash_password(password.clone()).await;
+            let user = self.user_db.find_by_username(username.as_str()).await;
+            match user {
+                Ok(Some(user)) => {
+                    let is_valid= Self::verify_password(password, &user.password_hash).await;
+                    if is_valid {
+                        Self::write_line(writer, "Your are authenticated\n").await?;
+                        let username = username.trim();
+                        println!("INFO: {username} logged in");
+                        break Ok(username.to_string());
+                    } else {
+                        Self::write_line(writer, "Your are not authenticated\n").await?;
+                        println!("WARN: user entered wrong password");
+                        continue;
+                    }
+                }
+                Ok(None) => {
+                    Self::write_line(writer, "user doesn't exist").await?;
+                    println!("WARN: user doesn't exist");
+                }
+                Err(e) => {
+                    println!("ERROR: failed to login: {}", e);
+                    continue;
+                }
             }
         }
     }
@@ -92,7 +105,6 @@ impl Auth {
         let password = Self::read_input(writer, reader, "Enter password: ").await?;
         Ok((username, password))
     }
-
 
     async fn hash_password(password: String) -> String {
         let salt = SaltString::generate(&mut OsRng);
@@ -126,7 +138,8 @@ impl Auth {
     }
 
     async fn verify_password(password: String, stored_hash: &str) -> bool {
-        let parsed_hash = PasswordHash::new(stored_hash).expect("ERROR: invalid hash format");
+        let parsed_hash = PasswordHash::new(stored_hash)
+            .expect("ERROR: invalid hash format");
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
             .is_ok()
