@@ -1,16 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use tokio::fs::File;
 use tokio::io;
 use tokio::sync::Mutex;
 
 use crate::server::ConnectionStatus;
 use crate::users::User;
+//use crate::file::send_file;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
 #[derive(Debug)]
 pub enum Command {
     PrivateMessage { target: String, message: String },
+    SendFile { target: String, file_path: String },
     JoinChannel(String),
     ListUsers,
     ListChannels,
@@ -30,6 +33,10 @@ impl Command {
             ["/msg", target, message] => Command::PrivateMessage {
                 target: target.to_string(),
                 message: message.to_string(),
+            },
+            ["/send", target, file_path] => Command::SendFile {
+                target: target.to_string(),
+                file_path: file_path.to_string(),
             },
             ["/kick", target] => Command::KickUser(target.to_string()),
             ["/join", channel] => Command::JoinChannel(channel.to_string()),
@@ -60,6 +67,9 @@ impl CommandExecutor {
         match command {
             Command::PrivateMessage { target, message } => {
                 Self::send_private_message(username, target, message, users).await
+            }
+            Command::SendFile { target, file_path } => {
+                Self::send_file(username, users, target, file_path).await
             }
             Command::KickUser(target) => Self::kick_user(username, target, users).await,
             Command::JoinChannel(channel) => Self::join_channel(username, channel, users).await,
@@ -187,13 +197,46 @@ impl CommandExecutor {
         Ok(ConnectionStatus::Continue)
     }
 
+    async fn send_file(
+        username: String,
+        users: Users,
+        target_name: String,
+        file_path: String,
+    ) -> io::Result<ConnectionStatus> {
+        let users_guard = users.lock().await;
+        if let Some(user) = users_guard.values().find(|u| u.username == target_name) {
+            let file_path = match File::open(file_path.clone()).await {
+                Ok(f) => f,
+                Err(e) => {
+                    let error = format!("ERROR: file {} not found: {}", file_path, e);
+                    eprintln!("{error}");
+                    user.send(error).await?;
+                    return Ok(ConnectionStatus::Continue);
+                }
+            };
+            println!("INFO: file transfer to {} begins", target_name);
+            let response = format!("{username} is sending {:?}", file_path);
+            user.send(response.to_string()).await?;
+            user.send("=========================================".to_string())
+                .await?;
+            //Self::send_private_message(username, target_name.clone(), response, users.clone()).await?;
+            user.send_file_stream(file_path).await?;
+            user.send("=========================================".to_string())
+                .await?;
+            println!("INFO: file transfer to {} complete", target_name);
+        } else {
+            let error = format!("User {} not found.", target_name);
+            Self::send_message(username, users_guard, error.to_string()).await?;
+        }
+        Ok(ConnectionStatus::Continue)
+    }
+
     async fn list_channels(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let users_guard = users.lock().await;
         let channels: HashSet<String> = users_guard
             .values()
             .map(|user| user.get_channel().to_string())
             .collect();
-
         let channel_list: Vec<String> = channels.into_iter().collect();
         let response = format!("Active channels: {}", channel_list.join(", "));
         Self::send_message(username, users_guard, response.to_string()).await?;
@@ -238,7 +281,6 @@ impl CommandExecutor {
 
     async fn send_unknown_command(username: String, users: Users) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
-
         if let Some(user) = users_guard.get_mut(&username) {
             let help = r#"
             Available commands:

@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
 
     println!("INFO: server starting on port :6969");
 
-    if let Err(e) = start_server("127.0.0.1:6969", pool).await {
+    if let Err(e) = start_server("0.0.0.0:6969", pool).await {
         eprintln!("ERROR: failed to start server: {}", e);
     }
     Ok(())

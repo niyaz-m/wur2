@@ -51,21 +51,21 @@ impl Server {
         let auth = Auth::new(user_db);
 
         let username = auth.auth(&mut writer, &mut reader).await;
-        let mut reader = BufReader::new(reader);
+        let mut buf_reader = BufReader::new(&mut reader);
 
         let username: String = username?;
-        let user = User::from_stream(writer, &username).await?;
+        let user = User::from_stream(writer, &buf_reader, &username).await?;
 
         {
             let mut users_guard = users.lock().await;
             users_guard.insert(user.username.clone(), user.clone());
         }
 
-        println!("INFO: {} connected", user.username);
+        //println!("INFO: {} connected", user.username);
 
         let mut buffer = String::new();
 
-        while reader.read_line(&mut buffer).await? > 0 {
+        while buf_reader.read_line(&mut buffer).await? > 0 {
             let command = buffer.trim().to_string();
             match CommandExecutor::execute(user.username.clone(), command, users.clone()).await {
                 Ok(ConnectionStatus::Continue) => {}

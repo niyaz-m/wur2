@@ -2,7 +2,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use tokio::io::{Result, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Result};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 use crate::db::UserDb;
@@ -16,10 +16,14 @@ impl Auth {
         Self { user_db }
     }
 
-    pub async fn auth(&self, writer: &mut OwnedWriteHalf, reader: &mut OwnedReadHalf) -> Result<String> {
+    pub async fn auth(
+        &self,
+        writer: &mut OwnedWriteHalf,
+        reader: &mut OwnedReadHalf,
+    ) -> Result<String> {
         let mut reader = BufReader::new(reader);
         let mut answer = String::new();
-        Self::write_line(writer, "Do you an account? (y/n)" ).await?;
+        writer.write_all(b"Do you an account? (y/n) ").await?;
         reader.read_line(&mut answer).await?;
         let answer = answer.trim();
         match answer {
@@ -39,13 +43,19 @@ impl Auth {
         reader: &mut BufReader<&mut OwnedReadHalf>,
     ) -> Result<String> {
         loop {
-            let Ok((username, password)) = Self::credentials(writer, reader).await else { todo!() };
+            let Ok((username, password)) = Self::credentials(writer, reader).await else {
+                todo!()
+            };
             let username = username.trim();
             let password = password.trim();
             if !password.is_empty() && !username.is_empty() {
                 let password_hash = Self::hash_password(password.to_string().clone()).await;
                 println!("INFO: password hash: {password_hash}");
-                match self.user_db.create_user(username.to_string(), password_hash.as_str()).await {
+                match self
+                    .user_db
+                    .create_user(username.to_string(), password_hash.as_str())
+                    .await
+                {
                     Ok(username) => println!("INFO: {:#?} created", username),
                     Err(e) => {
                         println!("ERROR: failed to create user {username}: {}", e);
@@ -64,23 +74,24 @@ impl Auth {
         &self,
         writer: &mut OwnedWriteHalf,
         reader: &mut BufReader<&mut OwnedReadHalf>,
-    ) -> Result<String > {
+    ) -> Result<String> {
         loop {
             let Ok((username, password)) = Self::credentials(writer, reader).await else {
                 panic!("ERROR: failed to get crdentials");
             };
-            //let password_hash = Self::hash_password(password.clone()).await;
             let user = self.user_db.find_by_username(username.as_str()).await;
             match user {
                 Ok(Some(user)) => {
-                    let is_valid= Self::verify_password(password, &user.password_hash).await;
+                    let is_valid = Self::verify_password(password, &user.password_hash).await;
                     if is_valid {
-                        Self::write_line(writer, "Your are authenticated\n").await?;
+                        let response = format!("Welcome back {username}!\n");
+                        Self::write_line(writer, response.as_str()).await?;
                         let username = username.trim();
                         println!("INFO: {username} logged in");
+                        Self::list_users(&self.user_db).await?;
                         break Ok(username.to_string());
                     } else {
-                        Self::write_line(writer, "Your are not authenticated\n").await?;
+                        Self::write_line(writer, "You entered wrong password").await?;
                         println!("WARN: user entered wrong password");
                         continue;
                     }
@@ -116,7 +127,7 @@ impl Auth {
         hash
     }
 
-    pub async fn list_users(user_db: &UserDb) -> Result<()>{
+    pub async fn list_users(user_db: &UserDb) -> Result<()> {
         match user_db.get_all_users().await {
             Ok(users) => {
                 if users.is_empty() {
@@ -138,20 +149,21 @@ impl Auth {
     }
 
     async fn verify_password(password: String, stored_hash: &str) -> bool {
-        let parsed_hash = PasswordHash::new(stored_hash)
-            .expect("ERROR: invalid hash format");
+        let parsed_hash = PasswordHash::new(stored_hash).expect("ERROR: invalid hash format");
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
             .is_ok()
     }
 
     async fn write_line(writer: &mut OwnedWriteHalf, message: &str) -> Result<()> {
-        writer.write_all(format!("{}\n", message).as_bytes()).await?;
+        writer
+            .write_all(format!("{}\n", message).as_bytes())
+            .await?;
         writer.flush().await?;
         Ok(())
     }
 
-   async fn read_input(
+    async fn read_input(
         writer: &mut OwnedWriteHalf,
         reader: &mut BufReader<&mut OwnedReadHalf>,
         prompt: &str,
@@ -162,10 +174,7 @@ impl Auth {
         Ok(input.trim().to_string())
     }
 
-    async fn prompt_user(
-        writer: &mut OwnedWriteHalf,
-        prompt: &str,
-    ) -> Result<()> {
+    async fn prompt_user(writer: &mut OwnedWriteHalf, prompt: &str) -> Result<()> {
         writer.write_all(prompt.as_bytes()).await?;
         writer.flush().await?;
         Ok(())
