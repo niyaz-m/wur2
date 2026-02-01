@@ -1,0 +1,39 @@
+import { LineEdit, VerticalBox, HorizontalBox, Button } from "std-widgets.slint";
+
+export component wur2 inherits Window {
+	in-out property <string> message: "";
+
+	callback send-message(string);
+
+	VerticalBox {
+		Rectangle { }
+
+		HorizontalBox {
+			padding: 5px;
+			spacing: 10px;
+			LineEdit {
+				placeholder-text: "Enter message";
+				text <=> root.message;
+
+				accepted(val) => { 
+					if (root.message != "") {
+						root.send-message(val); 
+						root.message= "";
+					}
+				}
+				horizontal-stretch: 3;
+			}
+			Button {
+				text: "Submit";
+				horizontal-stretch: 1;
+      				clicked => { 
+					if (root.message != "") {
+						root.send-message(root.message); 
+						root.message= "";
+					}
+				}
+
+			}
+		}
+	}
+}
