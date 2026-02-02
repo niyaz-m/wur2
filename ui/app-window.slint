@@ -1,39 +1,59 @@
-import { LineEdit, VerticalBox, HorizontalBox, Button } from "std-widgets.slint";
+import { LineEdit, Button, HorizontalBox, VerticalBox, ListView } from "std-widgets.slint";
 
 export component wur2 inherits Window {
-	in-out property <string> message: "";
+    min-width: 400px;
+    min-height: 400px;
+    background: #1a1a1a;
 
-	callback send-message(string);
+    in-out property <[string]> history: [];
+    in-out property <string> message: "";
+    callback add-to-history(string);
 
-	VerticalBox {
-		Rectangle { }
+    VerticalBox {
+        padding: 10px;
+        spacing: 10px;
 
-		HorizontalBox {
-			padding: 5px;
-			spacing: 10px;
-			LineEdit {
-				placeholder-text: "Enter message";
-				text <=> root.message;
+        ListView {
+            for entry in root.history : HorizontalBox {
+                padding: 5px;
+                Rectangle {
+                    background: #2a2a2a;
+                    border-radius: 4px;
+                    Text {
+                        text: entry;
+                        color: white;
+                        font-size: 16px;
+                    }
+                }
+            }
+        }
 
-				accepted(val) => { 
-					if (root.message != "") {
-						root.send-message(val); 
-						root.message= "";
-					}
-				}
-				horizontal-stretch: 3;
-			}
-			Button {
-				text: "Submit";
-				horizontal-stretch: 1;
-      				clicked => { 
-					if (root.message != "") {
-						root.send-message(root.message); 
-						root.message= "";
-					}
-				}
+        HorizontalBox {
+            vertical-stretch: 0;
+            spacing: 10px;
 
-			}
-		}
-	}
+            LineEdit {
+                placeholder-text: "Send a message...";
+                text <=> root.message;
+                horizontal-stretch: 1;
+                accepted => {
+                    if (root.message != "") {
+                        root.add-to-history(root.message);
+                        root.message = "";
+                    }
+                }
+            }
+
+            Button {
+                text: "Send";
+                primary: true;
+                clicked => {
+                    if (root.message != "") {
+                        root.add-to-history(root.message);
+                        root.message = "";
+                    }
+                }
+            }
+        }
+    }
 }
