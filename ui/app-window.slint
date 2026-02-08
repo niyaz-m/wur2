@@ -8,6 +8,7 @@ export component wur2 inherits Window {
     in-out property <[string]> history: [];
     in-out property <string> message: "";
     callback add-to-history(string);
+    callback append_message(string);
 
     VerticalBox {
         padding: 10px;
@@ -57,3 +58,4 @@ export component wur2 inherits Window {
         }
     }
 }
+
