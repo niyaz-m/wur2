@@ -21,19 +21,25 @@ impl Auth {
         writer: &mut OwnedWriteHalf,
         reader: &mut OwnedReadHalf,
     ) -> Result<String> {
-        let mut reader = BufReader::new(reader);
-        let mut answer = String::new();
-        writer.write_all(b"Do you an account? (y/n) ").await?;
-        reader.read_line(&mut answer).await?;
-        let answer = answer.trim();
-        match answer {
-            "y" => {
-                return self.login(writer, &mut reader).await;
+        loop {
+            let mut answer = String::new();
+            writer
+                .write_all(b"Do you have an account? (y/n) \n")
+                .await?;
+            let mut reader = BufReader::new(&mut *reader);
+            reader.read_line(&mut answer).await?;
+            let answer = answer.trim();
+            match answer {
+                "y" => {
+                    return self.login(writer, &mut reader).await;
+                }
+                "n" => {
+                    return self.register(writer, &mut reader).await;
+                }
+                _ => {
+                    continue;
+                }
             }
-            "n" => {
-                return self.register(writer, &mut reader).await;
-            }
-            _ => Ok("Do you an account? (y/n) ".to_string()),
         }
     }
 
@@ -112,8 +118,8 @@ impl Auth {
         writer: &mut OwnedWriteHalf,
         reader: &mut BufReader<&mut OwnedReadHalf>,
     ) -> Result<(String, String)> {
-        let username = Self::read_input(writer, reader, "Enter username: ").await?;
-        let password = Self::read_input(writer, reader, "Enter password: ").await?;
+        let username = Self::read_input(writer, reader, "Enter username \n").await?;
+        let password = Self::read_input(writer, reader, "Enter password \n").await?;
         Ok((username, password))
     }
 
