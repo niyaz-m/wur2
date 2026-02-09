@@ -1,107 +1,183 @@
+
+---
+
 # Whats Up Rust 2 (WUR2)
 
-A robust, asynchronous multi-user chat server built with **Rust**, **Tokio**, and **PostgreSQL**. This project features a custom TCP protocol with built-in authentication, channel management, and real-time messaging.
+Whats Up Rust 2 (WUR2) is a robust, asynchronous, multi-user chat system written in **Rust**, featuring a high-performance TCP server and multiple clients, including a modern **GUI client built with Slint** and classic terminal clients like `telnet` or `nc`.
+
+The project is intentionally split into **server** and **client binaries**, following a real-world architecture. 
 
 ---
 
-##  Features
+## Features
 
-* **Asynchronous Architecture**: Powered by `tokio` for high-concurrency handling of TCP connections.
-* **Secure Authentication**: User registration and login using `argon2` password hashing.
-* 
-**Persistent Storage**: PostgreSQL integration via `sqlx` to store users and message history.
+### Server
 
+* Asynchronous architecture powered by `tokio`
+* Custom line-based TCP protocol
+* Persistent storage using PostgreSQL via `sqlx`
+* Secure authentication with Argon2 password hashing
+* Channel-based chat system
+* Basic role management (`User`, `Mod`)
 
-* **Channel System**: Support for switching between different chat channels (e.g., Global, Private).
-* **Real-time Interaction**:
-* **Broadcast**: Message everyone in your current channel.
-* **Private Messaging**: Direct messages between users using `/msg`.
-* **File Transfer**: Stream files directly to other users using `/send`.
+### Messaging
 
+* Channel-wide broadcast messages
+* Private messaging using `/msg`
+* File transfer using `/send`
+* Real-time user and channel listing
 
-* **Role Management**: Basic "User" and "Mod" roles with privilege checking (e.g., kicking users).
+### Clients
 
----
-
-##  Tech Stack
-
-* **Language**: Rust
-* **Runtime**: [Tokio](https://tokio.rs/) (Async I/O)
-* 
-**Database**: PostgreSQL 
-
-
-* **ORM/Query Builder**: [SQLx](https://github.com/launchbadge/sqlx)
-* **Security**: Argon2 (Password Hashing)
+* Desktop GUI client built using Slint
+* Fully compatible with `telnet` and `nc`
+* Multiple clients can connect simultaneously
+* GUI and terminal users can chat together
 
 ---
 
-##  Prerequisites
+## Architecture Overview
 
-* [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
-* [PostgreSQL](https://www.postgresql.org/download/)
-* `sqlx-cli` (optional, for running migrations manually)
-
----
-
-## ️ Setup
-
-1. **Clone the repository**:
-```bash
-git clone https://github.com/niyaz-m/wur2.git 
-cd wur2
+WUR2 is a multi-binary Cargo project:
 
 ```
+wur2/
+├── server/        # TCP chat server
+├── ui/            # Slint-based GUI client
+├── shared/        # Shared protocol and models (if applicable)
+├── Cargo.toml
+└── README.md
+```
 
+* The server runs independently and must be started first
+* Clients connect over TCP and contain no server logic
+* The GUI is a pure client, not a wrapper around the server
 
-2. **Configure Environment**:
-Create a `.env` file in the root directory (or update the existing one):
+---
 
+## Tech Stack
+
+* Language: Rust
+* Async Runtime: Tokio
+* Database: PostgreSQL
+* Database Layer: SQLx
+* Security: Argon2
+* GUI: Slint
+* Protocol: Custom TCP
+
+---
+
+## Prerequisites
+
+* Rust (latest stable)
+* PostgreSQL
+* Optional: `sqlx-cli`
+* A running PostgreSQL instance
+
+---
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/niyaz-m/wur2.git
+cd wur2
+```
+
+### 2. Configure environment variables
+
+Create a `.env` file in the project root:
 
 ```env
 DATABASE_URL=postgres://username:password@localhost/wur2
-
 ```
 
+Ensure the database exists before starting the server.
 
-3. **Database Migration**:
-The server automatically runs migrations on startup. Ensure your PostgreSQL server is running and the database specified in `.env` exists.
-4. **Run the Server**:
+### 3. Run the server
+
 ```bash
-cargo run
-
+cargo run --bin server
 ```
 
+The server listens on:
 
-The server will start on `0.0.0.0:6969`.
+```
+0.0.0.0:6969
+```
 
----
-
-##  Usage & Commands
-
-Once connected via a TCP client (like `telnet` or `nc`), you can use the following commands:
-
-| Command | Action |
-| --- | --- |
-| `/msg <user> <msg>` | Send a private message to a specific user. |
-| `/join <channel>` | Switch to a different chat channel. |
-| `/send <user> <path>` | Send a file from the server's path to a user. |
-| `/list` | List all currently connected users. |
-| `/channels` | List all active channels. |
-| `/profile` | View your username, current channel, and role. |
-| `/kick <user>` | Disconnect a user (Moderator only). |
-| `/role` | Toggle your role (Demonstration purposes). |
-| `/close` | Safely disconnect from the server. |
-| `/help` | Show the available command list. |
+Database migrations are applied automatically on startup.
 
 ---
 
-##  Project Structure
+## Running Clients
 
-* `main.rs`: Entry point, database initialization, and server startup.
-* `auth.rs`: Handles the login/registration flow and password verification.
-* `server.rs`: Manages the TCP listener and client connection lifecycle.
-* `messages.rs`: Contains the command parser and execution logic.
-* `users.rs`: Defines the `User` struct and asynchronous communication tasks.
-* `db.rs`: Database abstraction layer for user operations.
-* `models.rs`: Data structures for database entities.
+### GUI Client (Slint)
+
+```bash
+cargo run --bin client
+```
+
+* Connects to the server over TCP
+* Displays chat history and live messages
+* Multiple GUI instances can run simultaneously
+
+### Terminal Client
+
+Using telnet:
+
+```bash
+telnet 127.0.0.1 6969
+```
+
+Or using netcat:
+
+```bash
+nc 127.0.0.1 6969
+```
+
+If you are going to chat over different devices replace 127.0.0.1 with your ip address.
+
+GUI and terminal clients operate on the same server and can interact in real time.
+
+---
+
+## Usage and Commands
+
+| Command                 | Description                  |
+| ----------------------- | ---------------------------- |
+| `/msg <user> <message>` | Send a private message       |
+| `/join <channel>`       | Switch to another channel    |
+| `/send <user> <path>`   | Send a file                  |
+| `/list`                 | List connected users         |
+| `/channels`             | List active channels         |
+| `/profile`              | View your profile            |
+| `/kick <user>`          | Kick a user (Moderator only) |
+| `/role`                 | Toggle role (demo)           |
+| `/close`                | Disconnect safely            |
+| `/help`                 | Show available commands      |
+
+Commands behave identically across GUI and terminal clients.
+
+---
+
+## Server Code Structure
+
+* `main.rs` – Application entry point
+* `server.rs` – TCP listener and connection lifecycle
+* `auth.rs` – Login, registration, password verification
+* `messages.rs` – Command parsing and execution
+* `users.rs` – User state and async communication
+* `db.rs` – PostgreSQL abstraction layer
+
+---
+
+## Project Status
+
+* Server: Stable
+* GUI Client: Active development
+* Protocol: Evolving
+* File transfer: Functional but not optimized
+
+---
