@@ -2,7 +2,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Result};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Error, ErrorKind, Result};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 use crate::db::UserDb;
@@ -50,7 +50,10 @@ impl Auth {
     ) -> Result<String> {
         loop {
             let Ok((username, password)) = Self::credentials(writer, reader).await else {
-                todo!()
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "failed to read credentials",
+                ));
             };
             let username = username.trim();
             let password = password.trim();
@@ -70,6 +73,8 @@ impl Auth {
                         continue;
                     }
                 }
+                let response = format!("Welcome {username}!\n");
+                Self::write_line(writer, response.as_str()).await?;
                 Self::list_users(&self.user_db).await?;
                 break Ok(username.to_string());
             }
@@ -83,7 +88,10 @@ impl Auth {
     ) -> Result<String> {
         loop {
             let Ok((username, password)) = Self::credentials(writer, reader).await else {
-                panic!("ERROR: failed to get crdentials");
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    "failed to read credentials",
+                ));
             };
             let user = self.user_db.find_by_username(username.as_str()).await;
             match user {

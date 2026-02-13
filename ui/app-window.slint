@@ -6,56 +6,93 @@ export component wur2 inherits Window {
     background: #1a1a1a;
 
     in-out property <[string]> history: [];
+    in-out property <[string]> online_users: [];
     in-out property <string> message: "";
     callback add-to-history(string);
     callback append_message(string);
 
-    VerticalBox {
+    HorizontalBox {
         padding: 10px;
         spacing: 10px;
 
-        ListView {
-            for entry in root.history : HorizontalBox {
-                padding: 5px;
-                Rectangle {
-                    background: #2a2a2a;
-                    border-radius: 4px;
-                    Text {
-                        text: entry;
-                        color: white;
-                        font-size: 16px;
+        Rectangle {
+            width: 180px;
+            background: #202020;
+            border-radius: 6px;
+
+            VerticalBox {
+                padding: 10px;
+                spacing: 8px;
+
+                Text {
+                    text: "Online";
+                    color: #d4d4d4;
+                    font-size: 16px;
+                }
+
+                ListView {
+                    for user in root.online_users : HorizontalBox {
+                        padding: 4px;
+                        Rectangle {
+                            background: #2a2a2a;
+                            border-radius: 4px;
+                            Text {
+                                text: user;
+                                color: white;
+                                font-size: 14px;
+                            }
+                        }
                     }
                 }
             }
         }
 
-        HorizontalBox {
-            vertical-stretch: 0;
+        VerticalBox {
             spacing: 10px;
+            horizontal-stretch: 1;
 
-            LineEdit {
-                placeholder-text: "Send a message...";
-                text <=> root.message;
-                horizontal-stretch: 1;
-                accepted => {
-                    if (root.message != "") {
-                        root.add-to-history(root.message);
-                        root.message = "";
+            ListView {
+                for entry in root.history : HorizontalBox {
+                    padding: 5px;
+                    Rectangle {
+                        background: #2a2a2a;
+                        border-radius: 4px;
+                        Text {
+                            text: entry;
+                            color: white;
+                            font-size: 16px;
+                        }
                     }
                 }
             }
 
-            Button {
-                text: "Send";
-                primary: true;
-                clicked => {
-                    if (root.message != "") {
-                        root.add-to-history(root.message);
-                        root.message = "";
+            HorizontalBox {
+                vertical-stretch: 0;
+                spacing: 10px;
+
+                LineEdit {
+                    placeholder-text: "Send a message...";
+                    text <=> root.message;
+                    horizontal-stretch: 1;
+                    accepted => {
+                        if (root.message != "") {
+                            root.add-to-history(root.message);
+                            root.message = "";
+                        }
+                    }
+                }
+
+                Button {
+                    text: "Send";
+                    primary: true;
+                    clicked => {
+                        if (root.message != "") {
+                            root.add-to-history(root.message);
+                            root.message = "";
+                        }
                     }
                 }
             }
         }
     }
 }
-
