@@ -6,7 +6,6 @@ use tokio::sync::Mutex;
 
 use crate::server::ConnectionStatus;
 use crate::users::User;
-//use crate::file::send_file;
 
 pub type Users = Arc<Mutex<HashMap<String, User>>>;
 
@@ -155,9 +154,14 @@ impl CommandExecutor {
     ) -> io::Result<ConnectionStatus> {
         let mut users_guard = users.lock().await;
 
-        if let Some(user) = users_guard.values().find(|u| u.role == "User") {
+        let kicker_role = users_guard
+            .get(&kicker)
+            .map(|user| user.role.as_str())
+            .unwrap_or("User");
+
+        if kicker_role != "Mod" {
             let response = format!("You don't have the privileges to kick users...");
-            user.send(response.to_string()).await?;
+            Self::send_message(kicker, users_guard, response).await?;
             return Ok(ConnectionStatus::Continue);
         }
 
@@ -259,7 +263,7 @@ impl CommandExecutor {
         let sender = {
             let users = users.lock().await;
             users.get(&target).cloned()
-        }; // lock DROPPED
+        };
 
         if let Some(sender) = sender {
             sender.send(message).await?;
