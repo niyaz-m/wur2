@@ -99,11 +99,11 @@ impl CommandExecutor {
             sender_name, sender_channel
         );
 
-        for (name, user) in users_guard.iter() {
-            if name != &sender_name && user.get_channel() == sender_channel {
-                let final_msg = format!("[{}] {sender_name}: {msg}", sender_channel);
-                user.send(final_msg).await?;
-            }
+        for (_, user) in users_guard.iter() {
+            //if name != &sender_name && user.get_channel() == sender_channel {
+            let final_msg = format!("[{}] {sender_name}: {msg}", sender_channel);
+            user.send(final_msg).await?;
+            //}
         }
         Ok(ConnectionStatus::Continue)
     }
@@ -124,7 +124,7 @@ impl CommandExecutor {
         let mut users_guard = users.lock().await;
         if let Some(user) = users_guard.get_mut(&username) {
             user.change_role().await?;
-            let response = format!("You changed your role");
+            let response = "You changed your role".to_string();
             Self::send_message(username, users_guard, response).await?;
         }
         Ok(ConnectionStatus::Continue)
@@ -160,13 +160,13 @@ impl CommandExecutor {
             .unwrap_or("User");
 
         if kicker_role != "Mod" {
-            let response = format!("You don't have the privileges to kick users...");
+            let response = "You don't have the privileges to kick users...".to_string();
             Self::send_message(kicker, users_guard, response).await?;
             return Ok(ConnectionStatus::Continue);
         }
 
         if kicker == target {
-            let response = format!("You cannot kick yourself...");
+            let response = "You cannot kick yourself...";
             Self::send_message(kicker, users_guard, response.to_string()).await?;
             return Ok(ConnectionStatus::Continue);
         }
@@ -178,10 +178,10 @@ impl CommandExecutor {
         }
 
         if let Some(user) = users_guard.remove(&target) {
-            let response = format!("You have been kicked out of the server...");
+            let response = "You have been kicked out of the server...".to_string();
             user.send(response).await?;
         }
-        return Ok(ConnectionStatus::Continue);
+        Ok(ConnectionStatus::Continue)
     }
 
     async fn send_private_message(
@@ -249,10 +249,10 @@ impl CommandExecutor {
 
     async fn close_connection(username: String, users: Users) -> io::Result<ConnectionStatus> {
         //let users_guard = users.lock().await;
-        let response = format!("GOODBYE!");
+        let response = "GOODBYE!";
         //Self::send_message(username, users_guard, response.to_string()).await?;
         Self::c_send_message(username, users, response.to_string()).await?;
-        return Ok(ConnectionStatus::Close);
+        Ok(ConnectionStatus::Close)
     }
 
     pub async fn c_send_message(

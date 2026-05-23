@@ -1,136 +1,99 @@
-use slint::{SharedString, VecModel};
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpStream;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
+use iced::widget::{button, container, column, text_input, scrollable, rule, row};
+use iced::widget::container::Style;
+use iced::{Border, Color, Element, Length, Theme}; 
 
-slint::include_modules!();
+pub fn main() -> iced::Result {
+    iced::application(Chat::default, Chat::update, Chat::view)
+        .title("wur2")
+        .theme(Theme::TokyoNight)
+        .centered()
+        .run()
+}
 
-fn main() {
-    let ui = wur2::new().unwrap();
+#[derive(Default)]
+struct Chat {
+    message: String,
+    history: Vec<String>,
+}
 
-    let (tx_to_net, rx_from_ui) = mpsc::channel::<String>();
-    let (tx_to_ui, rx_from_net) = mpsc::channel::<NetEvent>();
+#[derive(Debug, Clone)]
+enum Message {
+    InputChanged(String),
+    SendMessage,
+}
 
-    let is_authenticated = Arc::new(AtomicBool::new(false));
-    let is_authenticated_net = is_authenticated.clone();
-
-    thread::spawn(move || {
-        let mut stream = TcpStream::connect("127.0.0.1:6969").expect("failed to connect");
-
-        let mut reader = BufReader::new(stream.try_clone().unwrap());
-
-        let tx_ui = tx_to_ui.clone();
-        thread::spawn(move || {
-            let mut line = String::new();
-            loop {
-                line.clear();
-                if reader.read_line(&mut line).is_ok() {
-                    let msg = line.trim().to_string();
-                    if msg.starts_with("Welcome") {
-                        is_authenticated_net.store(true, Ordering::Relaxed);
-                    }
-                    if let Some(list) = parse_user_list(&msg) {
-                        let _ = tx_ui.send(NetEvent::UserList(list));
-                    } else if !msg.is_empty() {
-                        let _ = tx_ui.send(NetEvent::Chat(msg));
-                    }
-                }
+impl Chat {
+    fn update(&mut self, message: Message) { 
+        match message {
+            Message::InputChanged(text) => {
+                self.message = text;
             }
+            Message::SendMessage => {
+                println!("{}", self.message);
+                self.history.push(self.message.clone());
+                self.message.clear();
+            }
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let messages = self.history.iter().enumerate().map(|(i, msg)| {
+            let mut col = column![
+                container(iced::widget::text(msg)).width(Length::Fill)
+                    .padding(10)
+            ];
+
+            if i < self.history.len() - 1 {
+                col = col.push(rule::horizontal(2));
+            }
+
+            col.into()
         });
 
-        for msg in rx_from_ui {
-            let _ = writeln!(stream, "{msg}");
-        }
-    });
+        let scroll = scrollable(
+            column(messages).spacing(0)
+        )
+            .width(Length::Fill)
+            .height(Length::FillPortion(95))
+            .anchor_bottom();
 
-    let tx_to_net_list = tx_to_net.clone();
-    let is_authenticated_list = is_authenticated.clone();
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(3));
-        if is_authenticated_list.load(Ordering::Relaxed) {
-            let _ = tx_to_net_list.send("/list".to_string());
-        }
-    });
+        let input_box = row![
+            text_input("Send a message...", self.message.as_str())
+                .on_input(Message::InputChanged)
+                .on_submit(Message::SendMessage),
+                button("Send")
+                    .on_press(Message::SendMessage)
+                    .width(Length::Shrink)
+        ]
+        .spacing(10)
+        .width(Length::Fill)
+        .height(Length::FillPortion(5));
 
-    let history = Rc::new(VecModel::<SharedString>::from(vec![]));
-    ui.set_history(history.clone().into());
+        let content = column![
+            scroll,
+            input_box,
+        ]
+            .height(Length::Fill)
+            .spacing(10);
 
-    ui.set_online_users(Rc::new(VecModel::<SharedString>::from(vec![])).into());
+        let style = Style {
+            background: None, 
+            border: Border {
+                color: Color::from_rgb(0.3, 0.3, 0.3),
+                width: 1.0,
+                radius: 5.0.into(),
+            },
+            text_color: None,
+            shadow: Default::default(),
+            snap: true,
+        };
 
-    let history_handle = history.clone();
-    ui.on_add_to_history(move |text| {
-        history_handle.push(text.clone().into());
-        let msg = text.trim().to_string();
-        if msg.is_empty() {
-            return;
-        }
-
-        let _ = tx_to_net.send(msg);
-    });
-
-    let history_handle2 = history.clone();
-    ui.on_append_message(move |msg| {
-        history_handle2.push(msg.into());
-    });
-
-    let ui_weak = ui.as_weak();
-    thread::spawn(move || {
-        for event in rx_from_net {
-            let ui_weak = ui_weak.clone();
-
-            slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    match event {
-                        NetEvent::Chat(msg) => {
-                            ui.invoke_append_message(msg.into());
-                        }
-                        NetEvent::UserList(users) => {
-                            let model = Rc::new(VecModel::<SharedString>::from(
-                                users
-                                    .into_iter()
-                                    .map(SharedString::from)
-                                    .collect::<Vec<_>>(),
-                            ));
-                            ui.set_online_users(model.into());
-                        }
-                    }
-                }
+        container(content) 
+            .padding(7)
+            .width(Length::Fill)
+            .style(move |_theme: &Theme| {
+                style
             })
-            .unwrap();
-        }
-    });
-
-    ui.run().unwrap();
-}
-
-enum NetEvent {
-    Chat(String),
-    UserList(Vec<String>),
-}
-
-fn parse_user_list(msg: &str) -> Option<Vec<String>> {
-    let prefix = "Connected users:";
-    let trimmed = msg.trim();
-    if !trimmed.starts_with(prefix) {
-        return None;
+        .into()
     }
-
-    let list = trimmed[prefix.len()..].trim();
-    if list.is_empty() {
-        return Some(Vec::new());
-    }
-
-    let users = list
-        .split(',')
-        .map(|name| name.trim())
-        .filter(|name| !name.is_empty())
-        .map(|name| name.to_string())
-        .collect::<Vec<_>>();
-
-    Some(users)
 }
